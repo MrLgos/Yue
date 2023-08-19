@@ -1,6 +1,7 @@
 import requests
 import threading
 import time
+import Utils
 from datetime import datetime
 from time import strftime
 from time import gmtime
@@ -9,41 +10,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 MAX_REQUESTS_PER_SECOND = 10
 REQUEST_INTERVAL = 1 / MAX_REQUESTS_PER_SECOND
-
-def send_request(town):
-    url = f"https://api.earthmc.net/v1/aurora/towns/{town}"
-    print(town)
-    resNum = 0
-    try:
-        townsLookup = requests.get(url).json()
-        mayor = townsLookup['strings']['mayor']
-        x = townsLookup['spawn']['x']
-        z = townsLookup['spawn']['z']
-        town_size = townsLookup['stats']['numTownBlocks']
-        is_ruined = townsLookup['status']['isRuined']
-        resNum = townsLookup['stats']['numResidents']
-    except Exception as e:
-        print(e)
-    if resNum == 1:
-        try:
-            mayorLookup = requests.get(f"https://api.earthmc.net/v1/aurora/residents/{mayor}").json()
-        except Exception as e:
-            print(e)
-        lastOnline_TimeStamp = mayorLookup['timestamps']['lastOnline'] / 1000
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        last = datetime.fromtimestamp(lastOnline_TimeStamp).strftime('%Y-%m-%d %H:%M:%S')
-        date_now = parse(now)
-        date_last = parse(last)
-        result = (date_now - date_last).total_seconds()
-        m, s = divmod(result, 60)
-        h, m = divmod(m, 60)
-        d, h = divmod(h, 24)
-        if d == 42 and is_ruined == False:
-            with open('towns.txt', 'a+', encoding="utf-8") as f:
-                f.write(
-                    "Town: %s \nChunks: %d\nMayor: %s\nOffline since %d days %d hours %d minutes %d seconds.\ndynmap URL：https://earthmc.net/map/aurora/?worldname=earth&mapname=flat&zoom=5&x=%d&z=%d\n\n" % (
-                    town, town_size, mayor, d, h, m, s, x, z))
-            f.close()
 
 def Query_Unallied(nation):
     allNationsLookup = requests.get("https://api.earthmc.net/v1/aurora/nations/").json()
@@ -62,48 +28,28 @@ def Query_Unallied(nation):
     return unalliedList
 
 def Query_Falling_Nations():
-    import time
-    from datetime import datetime
-    from time import strftime
-    from time import gmtime
-    from dateutil.parser import parse
-    cnt = 0 
     allNationsLookup = requests.get("https://api.earthmc.net/v1/aurora/nations/").json()
     allNations = allNationsLookup["allNations"]
-    for nation in allNations:
-        nationsLookup = requests.get(f"https://api.earthmc.net/v1/aurora/nations/{nation}").json()
-        capital = nationsLookup['strings']['capital']
-        king = nationsLookup['strings']['king']
-        capitalLookup = requests.get(f"https://api.earthmc.net/v1/aurora/towns/{capital}").json()
-        resNum = capitalLookup['stats']['numResidents']
-        if resNum == 1:
-            kingLookup = requests.get(f"https://api.earthmc.net/v1/aurora/residents/{king}").json()
-            lastOnline_TimeStamp = kingLookup['timestamps']['lastOnline']/1000
-            # lastOnline_TimeTuple = time.localtime(lastOnline_TimeStamp)
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            last = datetime.fromtimestamp(lastOnline_TimeStamp).strftime('%Y-%m-%d %H:%M:%S')
-            date_now = parse(now)
-            date_last = parse(last)
-            result = (date_now - date_last).total_seconds()
-            m, s = divmod(result, 60)
-            h, m = divmod(m, 60)
-            d, h = divmod(h, 24)
-            if d >= 35:
-                print ("Nation: %s\nKing: %s\nOffline since %d days %d hours %d minutes %d seconds." % (nation, king, d, h, m, s))
-                cnt += 1
-    # AuroraLookup = requests.get("https://api.earthmc.net/v1/aurora/").json()
-    # time = AuroraLookup["world"]["fullTime"]
-    print(" %d nations about to fall. Use /seen in game to check more details!" % cnt)
+    total_requests = len(allNations)
+    print("Running now, pls wait...")
+    with ThreadPoolExecutor(max_workers=total_requests) as executor:
+        for nation in allNations:
+            try:
+                executor.submit(Utils.nationRequest, nation)
+                time.sleep(REQUEST_INTERVAL)
+            except:
+                continue
+    print("Check done. Use /seen in game to check more details!")
 
 def Query_Falling_Towns():
     allTownsLookup = requests.get("https://api.earthmc.net/v1/aurora/towns/").json()
-    # numTowns = allTownsLookup["numTowns"]
     allTowns = allTownsLookup["allTowns"]
     total_requests = len(allTowns)
+    print("Running now, pls wait...")
     with ThreadPoolExecutor(max_workers=total_requests) as executor:
         for town in allTowns:
             try:
-                executor.submit(send_request, town)
+                executor.submit(Utils.townRequest, town)
                 time.sleep(REQUEST_INTERVAL)
             except:
                 continue
